@@ -9,13 +9,30 @@
 #define BRI 30
 #define WIDTH 5
 #define HEIGHT 10
+#define NUMPIXELS 50
+
+// torch setup
+#define TORCHBOUNDARY 15
 
 // program
 static int programnum = 0;
-#define NUMPROGRAMS 6
+#define NUMPROGRAMS 10
 // buttons
 static int button1state = 0;
-
+// torch
+#define TORCHBRI 50
+static float torchtheta = 0;
+// torchflame
+static float torchflametheta = 0;
+#define FIRE_GREEN_LIMIT 0.5
+// fireflies
+static float fireflythetas[15] = {5.5,2.4,1.9,3.5,5.9,3.6,3.1,5.2,2.9,6.1,1.4,2.8,3.1,0.9,1.4};
+// staffpulse
+static float pulseloc = 0;
+static float pulsevel = .5;
+#define PULSESIZE 10
+// staffglow
+static float stafftheta = 0;
 // hearts
 static int heartrow = 0;
 // rotoflower
@@ -54,7 +71,7 @@ static float wavebinc = 0.0034;
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 //   NEO_RGBW    Pixels are wired for RGBW bitstream (NeoPixel RGBW products)
 // Adafruit_NeoPixel strip = Adafruit_NeoPixel(50, PIN, NEO_GRB + NEO_KHZ800);
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(50, PIN, NEO_RGB + NEO_KHZ400);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_RGB + NEO_KHZ400);
 
 // IMPORTANT: To reduce NeoPixel burnout risk, add 1000 uF capacitor across
 // pixel power leads, add 300 - 500 Ohm resistor on first pixel's data input
@@ -78,21 +95,39 @@ void setup() {
 void loop() {
   checkbuttons();
  if (programnum == 0) {
-    wanderingstar(10);
+    torch(10);
   }
-  if (programnum == 1) {
-    scrollHeart(strip.Color(BRI,0,0),100);
+ if (programnum == 1) {
+    fireflies();
+    staffpulse(1.0, 0.0, 0.0);
+    strip.show();
+    delay(10);
   }
-  if (programnum == 2) {
-    rotoflower(10);
+ if (programnum == 2) {
+    fireflies();
+    staffglow(0.0, 0.0, 0.5);
+    strip.show();
+    delay(10);
   }
   if (programnum == 3) {
-    starrynight(10);
+    torchflame();
+    staffpulse(0.0, 0.5, 0.0);
+    strip.show();
+    delay(10);
   }
   if (programnum == 4) {
-    colorwave(10);
+    torchflame();
+    staffglow(0.0, 0.0, 0.5);
+    strip.show();
+    delay(10);
   }
   if (programnum == 5) {
+    rotoflower(10);
+  }
+  if (programnum == 6) {
+    colorwave(10);
+  }
+  if (programnum >= 7) {
     alloff(10);
   }
 }
@@ -128,6 +163,83 @@ void alloff(uint8_t wait)
   strip.show();
   delay(wait);
 }
+
+void torch(uint8_t wait)
+{
+  for (uint16_t i=0; i < TORCHBOUNDARY; i=i+1) {
+    strip.setPixelColor(i,strip.Color(TORCHBRI,TORCHBRI,TORCHBRI));
+  }
+
+  for (uint16_t i = TORCHBOUNDARY; i < strip.numPixels(); i++) {
+    float ival = BRI*( (sin(torchtheta)+1)/2.0 );
+    uint32_t pcolor = strip.Color(0,0,round(ival));
+    strip.setPixelColor(i,pcolor);
+  }
+  torchtheta += THETAINC;
+  
+  // update array
+  strip.show();
+  delay(wait);
+}
+
+void fireflies()
+{
+  int numfireflies = sizeof(fireflythetas)/sizeof(float);
+  for (int ffnum = 0; ffnum < numfireflies; ffnum++) 
+  {
+    int pixelnum = ffnum;
+    float theta = fireflythetas[ffnum];
+    float ival = 2*BRI*( (sin(theta)+1)/2.0 );
+    uint32_t pcolor = strip.Color(round(ival),0.8*round(ival),0.3*round(ival));
+    strip.setPixelColor(pixelnum,pcolor);
+    fireflythetas[ffnum] += THETAINC;
+  }
+}
+
+void torchflame()
+{
+  torchflametheta += THETAINC;
+  float fire_brightness = 1+0.5*sin(torchflametheta);
+  for (int i = 0; i < TORCHBOUNDARY; i++)
+  {
+    // set pixels to fire colors modulated by fire brightness
+    strip.setPixelColor(i,strip.Color(int(BRI*fire_brightness),int(random(BRI)*fire_brightness*FIRE_GREEN_LIMIT),0));
+  }
+}
+
+void staffpulse(float rmax, float gmax, float bmax)
+{
+  int stafflen = NUMPIXELS-TORCHBOUNDARY;
+  if ( pulseloc >= stafflen) {
+    pulseloc = stafflen - 0.1;
+    pulsevel = -abs(pulsevel);
+  }
+  if (pulseloc < 0) {
+    pulseloc = 0.1;
+    pulsevel = abs(pulsevel);
+  }
+  pulseloc = pulseloc + pulsevel;
+
+  for (uint16_t staffloc = 0; staffloc < stafflen; staffloc++)
+  {
+    float rsquared = (staffloc-pulseloc)*(staffloc-pulseloc);
+    float ival = BRI*(exp(-rsquared/PULSESIZE));
+    uint32_t pcolor = strip.Color(round(ival*rmax), round(ival*gmax), round(ival*bmax));
+    strip.setPixelColor(TORCHBOUNDARY+staffloc, pcolor);
+  }
+}
+
+void staffglow(float rmax, float gmax, float bmax)
+{
+  for (uint16_t i = TORCHBOUNDARY; i < NUMPIXELS; i++)
+  {
+    float ival = BRI*(sin(stafftheta)+1)/2;
+    uint32_t pcolor = strip.Color(round(ival*rmax), round(ival*gmax), round(ival*bmax));
+    strip.setPixelColor(i, pcolor);
+  }
+  stafftheta += THETAINC;
+}
+
 
 void colorwave(uint8_t wait)
 {
